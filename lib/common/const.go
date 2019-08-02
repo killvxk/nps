@@ -13,6 +13,10 @@ const (
 	WORK_P2P          = "p2pm"
 	WORK_P2P_VISITOR  = "p2pv"
 	WORK_P2P_PROVIDER = "p2pp"
+	WORK_P2P_CONNECT  = "p2pc"
+	WORK_P2P_SUCCESS  = "p2ps"
+	WORK_P2P_END      = "p2pe"
+	WORK_P2P_LAST     = "p2pl"
 	WORK_STATUS       = "stus"
 	RES_MSG           = "msg0"
 	RES_CLOSE         = "clse"
@@ -22,6 +26,7 @@ const (
 	NEW_HOST          = "host"
 	CONN_TCP          = "tcp"
 	CONN_UDP          = "udp"
+	CONN_TEST         = "TST"
 	UnauthorizedBytes = `HTTP/1.1 401 Unauthorized
 Content-Type: text/plain; charset=utf-8
 WWW-Authenticate: Basic realm="easyProxy"

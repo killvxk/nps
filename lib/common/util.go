@@ -6,6 +6,7 @@ import (
 	"encoding/binary"
 	"github.com/cnlh/nps/lib/crypt"
 	"github.com/cnlh/nps/lib/pool"
+	"html/template"
 	"io"
 	"io/ioutil"
 	"net"
@@ -14,6 +15,7 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"sync"
 )
 
 //Get the corresponding IP address through domain name
@@ -82,7 +84,7 @@ func GetStrByBool(b bool) string {
 
 //int
 func GetIntNoErrByStr(str string) int {
-	i, _ := strconv.Atoi(str)
+	i, _ := strconv.Atoi(strings.TrimSpace(str))
 	return i
 }
 
@@ -161,6 +163,13 @@ func TestUdpPort(port int) bool {
 //Length prevents sticking
 //# Characters are used to separate data
 func BinaryWrite(raw *bytes.Buffer, v ...string) {
+	b := GetWriteStr(v...)
+	binary.Write(raw, binary.LittleEndian, int32(len(b)))
+	binary.Write(raw, binary.LittleEndian, b)
+}
+
+// get seq str
+func GetWriteStr(v ...string) []byte {
 	buffer := new(bytes.Buffer)
 	var l int32
 	for _, v := range v {
@@ -168,8 +177,7 @@ func BinaryWrite(raw *bytes.Buffer, v ...string) {
 		binary.Write(buffer, binary.LittleEndian, []byte(v))
 		binary.Write(buffer, binary.LittleEndian, []byte(CONN_DATA_SEQ))
 	}
-	binary.Write(raw, binary.LittleEndian, l)
-	binary.Write(raw, binary.LittleEndian, buffer.Bytes())
+	return buffer.Bytes()
 }
 
 //inArray str interface
@@ -216,6 +224,7 @@ func GetPorts(p string) []int {
 	return ps
 }
 
+//is the string a port
 func IsPort(p string) bool {
 	pi, err := strconv.Atoi(p)
 	if err != nil {
@@ -227,6 +236,7 @@ func IsPort(p string) bool {
 	return true
 }
 
+//if the s is just a port,return 127.0.0.1:s
 func FormatAddress(s string) string {
 	if strings.Contains(s, ":") {
 		return s
@@ -234,13 +244,28 @@ func FormatAddress(s string) string {
 	return "127.0.0.1:" + s
 }
 
+//get address from the complete address
 func GetIpByAddr(addr string) string {
 	arr := strings.Split(addr, ":")
 	return arr[0]
 }
 
+//get port from the complete address
+func GetPortByAddr(addr string) int {
+	arr := strings.Split(addr, ":")
+	if len(arr) < 2 {
+		return 0
+	}
+	p, err := strconv.Atoi(arr[1])
+	if err != nil {
+		return 0
+	}
+	return p
+}
+
 func CopyBuffer(dst io.Writer, src io.Reader) (written int64, err error) {
-	buf := pool.BufPoolCopy.Get().([]byte)
+	buf := pool.GetBufPoolCopy()
+	defer pool.PutBufPoolCopy(buf)
 	for {
 		nr, er := src.Read(buf)
 		if nr > 0 {
@@ -264,7 +289,6 @@ func CopyBuffer(dst io.Writer, src io.Reader) (written int64, err error) {
 			break
 		}
 	}
-	defer pool.PutBufPoolCopy(buf)
 	return written, err
 }
 
@@ -275,4 +299,95 @@ func GetLocalUdpAddr() (net.Conn, error) {
 		return nil, err
 	}
 	return tmpConn, tmpConn.Close()
+}
+
+//parse template
+func ParseStr(str string) (string, error) {
+	tmp := template.New("npc")
+	var err error
+	w := new(bytes.Buffer)
+	if tmp, err = tmp.Parse(str); err != nil {
+		return "", err
+	}
+	if err = tmp.Execute(w, GetEnvMap()); err != nil {
+		return "", err
+	}
+	return w.String(), nil
+}
+
+//get env
+func GetEnvMap() map[string]string {
+	m := make(map[string]string)
+	environ := os.Environ()
+	for i := range environ {
+		tmp := strings.Split(environ[i], "=")
+		if len(tmp) == 2 {
+			m[tmp[0]] = tmp[1]
+		}
+	}
+	return m
+}
+
+//throw the empty element of the string array
+func TrimArr(arr []string) []string {
+	newArr := make([]string, 0)
+	for _, v := range arr {
+		if v != "" {
+			newArr = append(newArr, v)
+		}
+	}
+	return newArr
+}
+
+//
+func IsArrContains(arr []string, val string) bool {
+	if arr == nil {
+		return false
+	}
+	for _, v := range arr {
+		if v == val {
+			return true
+		}
+	}
+	return false
+}
+
+//remove value from string array
+func RemoveArrVal(arr []string, val string) []string {
+	for k, v := range arr {
+		if v == val {
+			arr = append(arr[:k], arr[k+1:]...)
+			return arr
+		}
+	}
+	return arr
+}
+
+//convert bytes to num
+func BytesToNum(b []byte) int {
+	var str string
+	for i := 0; i < len(b); i++ {
+		str += strconv.Itoa(int(b[i]))
+	}
+	x, _ := strconv.Atoi(str)
+	return int(x)
+}
+
+//get the length of the sync map
+func GeSynctMapLen(m sync.Map) int {
+	var c int
+	m.Range(func(key, value interface{}) bool {
+		c++
+		return true
+	})
+	return c
+}
+
+func GetExtFromPath(path string) string {
+	s := strings.Split(path, ".")
+	re, err := regexp.Compile(`(\w+)`)
+	if err != nil {
+		return ""
+	}
+	return string(re.Find([]byte(s[0])))
 }
